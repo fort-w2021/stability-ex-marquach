@@ -1,0 +1,313 @@
+## Stabil, Brudi!
+
+### First, understand the problem ....
+
+Wir implementieren (partiell!) eine sehr allgemeine Methode für Variablenselektion  für verschiedene Modellklassen. Die Methode wird beschrieben in Meinshausen und Bühlmann's *Stability Selection*^[Meinshausen, N., & Bühlmann, P. (2010). Stability selection. Journal of the Royal Statistical Society: Series B (Statistical Methodology), 72(4), 417-473.] [(pdf)](http://stat.ethz.ch/~nicolai/stability.pdf). 
+
+a)  Lesen und verstehen Sie Sections 1, 2 und 5 des oben verlinkten Papers. Ignorieren Sie dabei die Abschnitte über "Gaussian graphical modelling" und "randomized Lasso". 
+
+b) Überprüpfen Sie ihr Verständnis. Betrachten Sie dazu den linken und den mittleren Plot in Figure 1 auf Seite 5 oben. 
+Was genau repräsentiert die horizontale Achse ($\lambda$)? Was repräsentieren jeweils die vertikalen Achsen ($\beta$ bzw. $\Pi$)?  Warum fangen in beiden Plots alle Pfade in (1.0, 0.0) an?
+Bedeutung $\lambda$:
+Im linken Plot sind die Lasso $\beta$ Gewichte abgebildet. Lasso ist ein Shrinkage Verfahren, welches die Gewichte von Variablen auf Null shrinken kann. Also somit Variablenselektion betreibt. $\lambda$ ist hierbei ein sogenannter Tuning-Parameter. Wenn $\lambda$ gleich null ist, fehlt der hintere Term, die Nebenbedingung, von $(2)$ weg und es handelt sich somit um den klassischen KQ-Schätzer. (Hmmm Bei Lasso wird ja immer standardisiert, also nicht ganz richtig).
+$\lambda$ wurde hier skaliert zwischen $0$ und $1$. $\lamda=1$ ist der minimale $\lambda$-Wert, also das Intercept-only Modell (null model). D.h. je groeßer $\lambda$, desto mehr wird die Modellkomplexitaet bestraft.
+Bedeutung $\beta$:
+Sind die Gewichtigungen der Variablen bei dem LASSO Model. Wie oben schoin erklaert je groeßer $\lambda$ wird, desto kleiner werden die $\beta$-Gewichte.
+Bedeutung $\Pi$:
+Hierbei handelt es sich um die Wahrscheinlichkeit, dass eine Variable bei einem bestimmten $\lambda$ ausgewaehlt wird. 
+Da die Wahrscheinlichkeiten sich nicht zu eins addieren, gehe ich mal davon aus, dass bei refit() nicht nur eine Variable ausgewaehlt wird.
+Antwort "Warum fangen in beiden Plots alle Pfade in (1.0, 0.0) an?":
+Die $x$-Achse starten bei allen Plots bei 1.0 da es sich hier um den Tuningparameter $\lambda$ handelt. 
+(Haette auch bei 0.0 starten koennen und bis 1.0 gehen. Ist ja nur der Werte Bereich von $\lambda$.)
+Die $y$-Achse startet bei den beiden rechten Plots bei 0, weil es sich hier um die Wahrscheinlichkeit handelt, dass eine Variable ausgewaehtl wird. Beim Nullmodel sind keine Variablen außer Intercept enthalten (bzw. hier ist $\beta_0 = \bar{y}$, wegen Standardisierung).
+
+b) Fassen Sie die Grundidee des Stability Selection Algorithmus in eigenen Worten zusammen. Was sind grob die einzelnen Schritte des Algorithmus um die "stability paths" zu berechnen?  
+(Ueberlegung: Am Ende will ich aus den stability paths lesen koennen wie wichtig eine Kovariable ist. Lambda reguliert den Schwellenwert. Stability path gibt an wie hauefig Kovariable bei gegebenen Lambda ausgewaehlt wurde. Um Hauefigkeit zu erhalten brauchen wir mehrere Samples. Um weitere Erhebung zu umgehen brauchen wir sampling Methoden. Ende Ueberlegung)
+Stability selection baut auf Subsampling auf. Hier koennen verschiedene Methoden verwendet werden z.b. Bootstrap, Subsampling, CV usw. . 
+Haben wir ein Sample gezogen wird auf dieses Sample das Model gefittet. Die Ergebnisse dieses Model werden in einer Matrix gespeichert.
+Diese Matrix enthaehlt aber nicht die Gewichte, sondern nur ob eine Kovariable enthalten ist oder nicht (TRUE bzw. FALSE). 
+Dies ist moeglich, da $TRUE = 1$ und $FALSE = 0$ ist. 
+
+Die Zeilen represaentieren die Staerke der Regulierung (starke Regularisierung $\rightarrow$ schwache Regularisierung) und die Spalten die Variablen. 
+Am Ende werden dann die Matrizen der einzelnen Subsamples addiert um so die absoluten Einschlusshaeufigkeiten zu erhalten. 
+Zuletzt wird diese dann durch die Gesamtanzahl an Subsamples (reps) geteilt, um so die relative Einschlusshaeufigkeit zu erhalten. 
+Diese relative Einschlusshaeufigkeit spiegeln dann die "stability paths" wider.
+
+(Ueberlegung1: Ist es nicht gefaehrlich eine Variable nur aufgrund ihrer Einschlusshaeufigkeit auszuwählen? Beim Boosting koennen doch Kovariablen sehr haeufig am Ende ausgewählt werden, obwohl diese eigentlich gar nichts mehr beitragen. 
+Ueberlegung2: Boosting ist schrittweiser Aufbau eines Modells. Koeffizienten werden geupdatet.
+LASSO schaetzt Modell mit Penalisierung. 
+Fazit: Bei Boosting gefaehrlich hier wohl nicht.)
+
+Erstellen Sie eine erste eigene Skizze einer Implementation des Algorithmus in Pseudo-Code, in dem in der Vorlesung besprochenen Top-Down-Stil. 
+```{, pseudo get stability path}
+#input: data, model and sampling options
+#output: a matrix with with probabilities for inclusion of model variables
+
+get_stability_paths <- function(data, model, resampling_options){
+
+#use loop 
+sample <- resample(data, resampling_options)
+new_model <- refit(model, sample)
+selected <- get_selected(new_model)
+#functions outside
+
+stability_paths
+}
+
+
+resample <- function(data, resampling_options){}
+refit <- function(data, sample){}
+get_selected <- function(new_model){}
+
+```
+
+*Hinweis*: Falls nötig finden Sie eine einigermaßen übersichtliche Beschreibung der Grundidee von Lasso-Regression anhand derer in dem Paper die *stability selection*-Methode veranschaulicht wird z.B. in Kapitel 3.4.2 aus T. Hastie und R. Tibshirani's *Elements of Statistical Learning* [(pdf)](http://statweb.stanford.edu/~tibs/ElemStatLearn/).
+
+--------------------------
+
+### ... then, write the code:
+
+Benutzen Sie als Ausgangsbasis den Code in `get-stability-paths.R`. 
+```{r, load, echo=FALSE}
+## extract stability paths from refits of <model> on resampled <data>.
+## arguments:
+##    model: a fitted model object of class "regsubsets"
+##    data: the data used for the model fit
+##    method: resampling method, either "subsample" (without replacement) or
+##      "bootstrap" (with replacement)
+##    strata: for subsampling, vector (length = nrow(data)) defining the strata
+##      for stratified sampling.
+##    fraction: subsampling fraction
+## return: a <max. subsetsize + 1> x <covariates> matrix with relative selection
+##    frequencies. first row is the null model (no covariates,i.e., all 0s)
+## dependencies: {checkmate}, {leaps}
+
+get_stability_paths <- function(model, data, reps = 100,
+                                method = c("subsample", "bootstrap"),
+                                strata = NULL, fraction = 0.5) {
+  checkmate::assert_class(model, "regsubsets")
+  checkmate::assert_data_frame(data)
+  checkmate::assert_count(reps)
+  method <- match.arg(method)
+  checkmate::assert_vector(strata, any.missing = FALSE,
+                           len = NROW(data), null.ok = TRUE)
+  checkmate::assert_number(fraction, lower = 0, upper = 1)
+
+  selected <- vector("list", reps)
+  for (i in seq_len(reps)) {
+    new_data <- resample(data, method = method, strata = strata,
+                         fraction = fraction)
+    new_model <- refit(model, new_data)
+    selected[[i]] <- get_selected(new_model)
+  }
+  stability_paths <- make_paths(selected)
+  stability_paths
+}
+
+
+
+############## resample ########################################################
+
+resample <- function(data, method = c("subsample", "bootstrap"),
+                     strata = NULL, fraction = 0.5) {
+  nrows <- nrow(data)
+  rows <- resample_rows(nrows, method, strata, fraction)
+  data[rows, ]
+}
+
+resample_rows <- function(nrows, method, strata = NULL, fraction = 0.5) {
+  switch(method,
+         "bootstrap" = sample_with_replacement(nrows, strata),
+         "subsample" = sample_without_replacement(nrows, strata,
+                                                  fraction = fraction)
+  )
+}
+
+sample_with_replacement <- function(nrows, strata = NULL) {
+  if (is.null(strata)) {
+    return(sample(nrows, replace = TRUE)) # --> early exit!
+  }
+  rows <- tapply(
+    X = seq_len(nrows), INDEX = strata, FUN = sample, replace = TRUE
+  )
+  as.vector(rows)
+}
+
+sample_without_replacement <- function(nrows, strata = NULL, fraction = 0.5) {
+    if (is.null(strata)) {
+    return(sample(nrows, replace = FALSE, size = ceiling(nrows * fraction))) # --> early exit!
+    }
+  
+  start <- 1
+  rows <- numeric(nrows)
+  row_names <- seq_len(nrows)
+  for (s in unique(strata)) {
+    used <- (strata == s)
+    stratum_size <- sum(used)
+    rows[start:(start + stratum_size - 1)] <- sample(x = row_names[used],
+                                                     replace = FALSE, size = ceiling(stratum_size * fraction))
+    start <- start + stratum_size
+  }
+  rows
+}
+
+############## refit ###########################################################
+
+# redo subset selection <model> on <new_data>1
+refit <- function(model, new_data) {
+  # works by overwriting the data argument of the original model
+  # and then re-doing the function call that produced the original model
+  modelcall <- model$call
+  modelcall$data <- new_data
+  # use regsubsets-generic here instead of regsubsets.formula or other method as
+  # these methods are not exported by {leaps}
+  # (quote s.t. just the name of the function is handed over, not the
+  # function code itself...)
+  modelcall[[1]] <- quote(leaps::regsubsets)
+  eval(modelcall)
+}
+
+############## get_selected ###########################################################
+get_selected <- function(new_model) {
+ with_intercept <- summary(new_model)[["which", drop = FALSE]]
+ without_intercept <- with_intercept[,-1 , drop = FALSE]
+ selected <- without_intercept
+}
+
+############## make_paths ###########################################################
+make_paths <- function(selected) {
+  path_matrix <- Reduce("+", selected)
+  path_matrix <- path_matrix/length(selected)
+  path_matrix <- rbind("0" = rep(0, ncol(path_matrix)),
+                       path_matrix)
+}
+
+
+```
+Die `refit`-Funktion können Sie hier zunächst mal als "black box" betrachten.
+Beachten Sie bitte dass Sie eventuell noch die Pakete `{leaps}` und `{ElemStatLearn}` installieren müssen.
+
+## Stabil, Brudi: Resampling
+
+Schreiben Sie die fehlenden Funktionen 
+Siehe oben.
+```r
+sample_without_replacement <- function(nrows, strata = NULL, fraction = 0.5) {
+  # ??
+}
+get_selected <- function(new_model) {
+  # ??
+}
+make_paths <- function(selected) {
+  # ??
+}
+```
+`get_selected` sollte für ein gegebenes Modell eine Matrix mit (max. Subsetgröße+1)$\times$(Anz. Kovariablen)
+zurückgeben, `make_paths` sollte für eine Liste solcher Matrizen eine Matrix die die *stability paths* enthält zurückgeben. Die erste Zeile der Matrizen sollte (Selektionshäufigkeiten für) 
+ein Modell ohne Kovariablen repräsentieren. 
+
+*Hinweis / Spoiler:* Die für `get_selected` benötigten Informationen über ein von `regsubsets` erzeugtes Modellobjekt können Sie mit `summary` in die Konsole drucken lassen.  
+Benutzen sie `str` in Kombination mit `summary` um zu verstehen wo & wie diese Informationen abgespeichert sind um diese dann per Code auslesen zu können.
+
+
+Überprüfen Sie Ihren Code mit folgendem Test:
+
+```{r, code = readLines("get-stability-paths.R"), echo=FALSE}
+```
+```{r, code = readLines("stability-paths-def.R"), echo=FALSE}
+```
+```{r, code = readLines("test-get-stability-paths.R")}
+```
+
+### Visualisierung
+
+Schreiben Sie eine Funktion `plot_stability_paths`, die in etwa so etwas wie 
+die untenstehende Grafik erzeugt. 
+
+```{r, code = readLines("stability-plot-def.R"), echo=FALSE}
+```
+```{r, plot_paths_ex, fig.width=5, fig.heigth=3}
+plot_stability_paths(stability_paths)
+```
+
+```{r, Code plot_stability_paths_base}
+############## plot_stability_paths ###########################################################
+# Input: matrix from get_stability_paths
+# Output: expected plot  (https://fort-w2021.github.io/ex/topdown-stability-ex.html)
+plot_stability_paths_base <- function(stability_paths){
+  
+  #Input check
+  checkmate::assert_matrix(stability_paths)
+  
+  # Change par and reset changes on exit
+  old_par <- par(no.readonly = TRUE)
+  on.exit(par(old_par))
+  par(xpd = TRUE, mar = c(5.1, 4.1, 4.1, 6.1))
+  
+  number_covariables <- ncol(stability_paths)
+  #generate empty plot with prior knowledge
+  plot(x = NULL, xlim = c(0,number_covariables), ylim = c(0,1),
+       xlab = "# covariates", ylab = expression(Pi),
+       axes = FALSE, 
+       frame.plot = FALSE, 
+       type = "l")
+  # Setup axes manually
+  axis(side = 1, at = seq(0,number_covariables,1), lwd = 1)
+  axis(side = 2, at = seq(0, 1, 0.2), lwd = 1)
+  
+  # for equal text spacing
+  y_length <- seq(from = 1, to = 0, length.out = number_covariables)
+  
+  for (p in seq_len(number_covariables)) {
+    points(x = 0:number_covariables, stability_paths[,p], pch = 16, col = p )
+    lines(x = 0:number_covariables, stability_paths[,p], type = "c" , col = p)
+    text(x = number_covariables + 0.75, y = y_length[p], colnames(stability_paths)[p], col = p)
+  } 
+}
+```
+
+
+```{r, base stability plot, fig.width=5, fig.heigth=3}
+plot_stability_paths_base(stability_paths)
+```
+
+
+```{r, Code ggplot2 stability plot}
+plot_stability_paths_ggplot <- function(stability_paths){
+library(ggplot2)
+  
+    #Input check
+  checkmate::assert_matrix(stability_paths)
+  
+  number_covariables <- ncol(stability_paths)
+  
+  ggplot_stability_paths <- cbind(tidyr::gather(as.data.frame(stability_paths), key, values),
+                                  "number_covariables" = seq(0,number_covariables,1) )
+  
+  ggplot(data = ggplot_stability_paths, aes(x = number_covariables, y = values, col = key)) +
+    geom_point(size = 2) +
+    geom_line() +
+    xlab("# covariates") + ylab(expression(Pi)) +
+    scale_x_continuous(breaks = seq(from = 0, to = 8, by = 2)) +
+    scale_y_continuous(breaks = seq(from = 0, to = 1, by = 0.2)) +
+                       theme(legend.title = element_blank(),
+                             panel.background = element_blank(),
+                             panel.grid.minor = element_blank(), 
+                             panel.grid.major = element_blank(),
+                             axis.line = element_line(colour = "black", linetype = 1,
+                                                      size = rel(1)), legend.key = element_blank())
+}
+```
+
+```{r, base stability plot, fig.width=5, fig.heigth=3}
+plot_stability_paths_ggplot(stability_paths)
+```
+
+Leider nicht so schoen geworden wie der Base Plot. 
+Bin leider noch nicht so der ggplot Experte, aber scheint mir deutlich aufwendiger als wie mit plot(). 
+Vor allem unterschiedliche farbige Eintraege der Legende. Scheint wohl nur mit ggtext zu gehen...
+
+Gibt es einen Weg diesen Abstand zwischen x und y Achse zubekommen?
+Habe es nur mit annotate() geschafft sah dann aber auch nicht wirklich so aus wie bei plot().
+
+Dann werd ich mir mal 'https://ggplot2-book.org/index.html' gut anschauen fuer die Zukunft...
